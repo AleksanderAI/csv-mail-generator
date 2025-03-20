@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generator Treści Maila z CSV</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        .error {
+            color: #a94442;
+            background-color: #f2dede;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .success {
+            margin-top: 20px;
+        }
+        #emailContent {
+            width: 100%;
+            min-height: 200px;
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            line-height: 1.5;
+            resize: vertical;
+        }
+        .copy-button {
+            background-color: #2196F3;
+            margin-top: 10px;
+        }
+        .copy-button:hover {
+            background-color: #1976D2;
+        }
+        .hidden {
+            display: none;
+        }
+        .language-select {
+            margin-bottom: 15px;
+        }
+        .button-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .thunderbird-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Generator Treści Maila z CSV</h1>
+        
+        <div class="language-select">
+            <label for="language">Wybierz język / Select language:</label>
+            <select id="language" name="language">
+                <option value="pl">Polski</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="file">Wybierz plik CSV:</label>
+                <input type="file" id="file" name="file" accept=".csv" required>
+            </div>
+            <button type="submit" id="submitBtn">Generuj Treść Maila</button>
+        </form>
+        
+        <div id="result"></div>
+        <div id="emailSection" class="hidden">
+            <div class="success">
+                <h3>Wygenerowana treść maila:</h3>
+                <textarea id="emailContent" readonly></textarea>
+                <div class="button-group">
+                    <button id="copyBtn" class="copy-button">Kopiuj do Schowka</button>
+                    <button id="thunderbirdBtn" class="thunderbird-button">Otwórz w Thunderbird</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const result = document.getElementById('result');
+        const emailSection = document.getElementById('emailSection');
+        const emailContent = document.getElementById('emailContent');
+        const copyBtn = document.getElementById('copyBtn');
+        const thunderbirdBtn = document.getElementById('thunderbirdBtn');
+        const languageSelect = document.getElementById('language');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const fileInput = document.getElementById('file');
+            const file = fileInput.files[0];
+            const language = languageSelect.value;
+            
+            if (!file) {
+                result.innerHTML = '<div class="error">Proszę wybrać plik CSV.</div>';
+                return;
+            }
+
+            formData.append('file', file);
+            formData.append('language', language);
+            submitBtn.disabled = true;
+            result.innerHTML = '';
+            emailSection.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    emailContent.value = data.content;
+                    emailSection.classList.remove('hidden');
+                    result.innerHTML = '';
+                } else {
+                    result.innerHTML = `<div class="error">${data.error || 'Wystąpił błąd podczas przetwarzania pliku.'}</div>`;
+                }
+            } catch (error) {
+                result.innerHTML = '<div class="error">Wystąpił błąd podczas przetwarzania żądania.</div>';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(emailContent.value);
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = 'Skopiowano!';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            } catch (err) {
+                result.innerHTML = '<div class="error">Nie udało się skopiować tekstu do schowka.</div>';
+            }
+        });
+
+        thunderbirdBtn.addEventListener('click', () => {
+            const content = emailContent.value;
+            const language = languageSelect.value;
+            
+            // Ustaw temat w zależności od języka
+            const subject = language === 'pl' ? 'Nowe zamówienie' : 'New order';
+            
+            // Przygotuj link mailto z zakodowanym tekstem
+            const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(content)}`;
+            
+            // Otwórz link w nowym oknie
+            window.location.href = mailtoLink;
+        });
+    </script>
+</body>
+</html>
