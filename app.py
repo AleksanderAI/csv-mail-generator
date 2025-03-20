@@ -38,7 +38,20 @@ TEMPLATES = {
     }
 }
 
-def try_decode_content(file_content, encodings=['utf-8', 'windows-1250', 'iso-8859-2', 'cp1250', 'latin1']):
+def clean_number(value):
+    """Czyści wartość liczbową z niepotrzebnych znaków"""
+    if isinstance(value, str):
+        # Usuń spacje, cudzysłowy i inne białe znaki
+        value = value.strip().strip('"').strip()
+        # Zamień przecinek na kropkę w liczbach
+        value = value.replace(',', '.')
+        # Usuń wszystkie spacje
+        value = value.replace(' ', '')
+        # Weź tylko pierwszą liczbę przed kropką
+        value = value.split('.')[0]
+    return value
+
+def try_decode_content(file_content, encodings=['utf-8', 'windows-1250', 'iso-8859-2', 'cp1250', 'latin1', 'latin2']):
     for encoding in encodings:
         try:
             decoded_content = file_content.decode(encoding)
@@ -71,37 +84,53 @@ def process_csv_content(file, language='pl'):
                 'success': False,
                 'error': TEMPLATES[language]['errors']['decode_error']
             }
-            
-        csv_file = io.StringIO(content)
-        reader = csv.reader(csv_file)
         
-        # Get all rows
-        rows = list(reader)
-        
-        if len(rows) < 2:  # Check if file has header and at least one row
-            logger.error("File has insufficient rows")
+        # Próbuj różne separatory
+        for delimiter in [';', ',']:
+            try:
+                csv_file = io.StringIO(content)
+                reader = csv.reader(csv_file, delimiter=delimiter)
+                rows = list(reader)
+                
+                if len(rows) < 2:  # Sprawdź czy plik ma nagłówek i przynajmniej jeden wiersz
+                    continue
+                
+                # Sprawdź czy mamy odpowiednie kolumny
+                headers = [h.strip().strip('"') for h in rows[0]]
+                
+                # Szukamy kolumn po nazwach lub używamy indeksów
+                if 'Indeks katalogowy' in headers and any('Zamow' in h for h in headers):
+                    index_col = headers.index('Indeks katalogowy')
+                    # Znajdź kolumnę z 'Zamow' w nazwie (może być 'Zamowiono' lub 'Zamówiono')
+                    quantity_col = next(i for i, h in enumerate(headers) if 'Zamow' in h)
+                    break
+                elif len(headers) >= 3:
+                    # Jeśli nie znaleźliśmy dokładnych nazw, używamy drugiej i trzeciej kolumny
+                    # (pierwszą kolumnę LP zawsze ignorujemy)
+                    index_col = 1  # druga kolumna
+                    quantity_col = 2  # trzecia kolumna
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to parse with delimiter {delimiter}: {str(e)}")
+                continue
+        else:
+            logger.error("Could not find valid CSV structure")
             return {
                 'success': False,
                 'error': TEMPLATES[language]['errors']['invalid_format']
             }
         
-        # Skip the header row
-        rows = rows[1:]
-        logger.info(f"Processing {len(rows)} rows")
-        
-        # Process each line according to the rules
+        # Przetwarzaj wiersze
         processed_lines = []
-        for row_num, row in enumerate(rows, start=2):
+        for row_num, row in enumerate(rows[1:], start=2):
             try:
-                if len(row) >= 3:
-                    # Wyciągnij wartości z kolumn, usuwając cudzysłowy i spacje
-                    col1 = row[1].strip().strip('"')  # Numer (747211)
-                    col2 = row[2].strip().strip('"').split(',')[0].strip()  # Liczba przed przecinkiem (1)
+                if len(row) > max(index_col, quantity_col):
+                    # Pobierz i wyczyść wartości
+                    index = clean_number(row[index_col])
+                    quantity = clean_number(row[quantity_col])
                     
-                    # Połącz w format "747211 - 1"
-                    line = f"{col1} - {col2}"
-                    
-                    if line and not line.isspace():  # Only add non-empty lines
+                    if index and quantity:
+                        line = f"{index} - {quantity}"
                         processed_lines.append(line)
                         logger.debug(f"Processed row {row_num}: {line}")
             except Exception as e:
