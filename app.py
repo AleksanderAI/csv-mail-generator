@@ -92,23 +92,25 @@ def process_csv_content(file, language='pl'):
                 reader = csv.reader(csv_file, delimiter=delimiter)
                 rows = list(reader)
                 
+                logger.debug(f"Próba parsowania z separatorem: {delimiter}")
+                logger.debug(f"Znalezione wiersze: {len(rows)}")
+                if rows:
+                    logger.debug(f"Nagłówki: {rows[0]}")
+                
                 if len(rows) < 2:  # Sprawdź czy plik ma nagłówek i przynajmniej jeden wiersz
+                    logger.debug("Za mało wierszy w pliku")
                     continue
                 
                 # Sprawdź czy mamy odpowiednie kolumny
                 headers = [h.strip().strip('"') for h in rows[0]]
+                logger.debug(f"Przetworzone nagłówki: {headers}")
                 
                 # Szukamy kolumn po nazwach lub używamy indeksów
-                if 'Indeks katalogowy' in headers and any('Zamow' in h for h in headers):
-                    index_col = headers.index('Indeks katalogowy')
-                    # Znajdź kolumnę z 'Zamow' w nazwie (może być 'Zamowiono' lub 'Zamówiono')
-                    quantity_col = next(i for i, h in enumerate(headers) if 'Zamow' in h)
-                    break
-                elif len(headers) >= 3:
-                    # Jeśli nie znaleźliśmy dokładnych nazw, używamy drugiej i trzeciej kolumny
-                    # (pierwszą kolumnę LP zawsze ignorujemy)
+                if len(headers) >= 3:
+                    # Zawsze używamy drugiej i trzeciej kolumny
                     index_col = 1  # druga kolumna
                     quantity_col = 2  # trzecia kolumna
+                    logger.debug(f"Używam kolumn: index_col={index_col}, quantity_col={quantity_col}")
                     break
             except Exception as e:
                 logger.warning(f"Failed to parse with delimiter {delimiter}: {str(e)}")
@@ -124,15 +126,20 @@ def process_csv_content(file, language='pl'):
         processed_lines = []
         for row_num, row in enumerate(rows[1:], start=2):
             try:
+                logger.debug(f"Przetwarzam wiersz {row_num}: {row}")
                 if len(row) > max(index_col, quantity_col):
                     # Pobierz i wyczyść wartości
                     index = clean_number(row[index_col])
                     quantity = clean_number(row[quantity_col])
                     
+                    logger.debug(f"Po czyszczeniu: index={index}, quantity={quantity}")
+                    
                     if index and quantity:
                         line = f"{index} - {quantity}"
                         processed_lines.append(line)
-                        logger.debug(f"Processed row {row_num}: {line}")
+                        logger.debug(f"Dodano linię: {line}")
+                else:
+                    logger.debug(f"Wiersz {row_num} ma za mało kolumn: {len(row)}")
             except Exception as e:
                 logger.warning(f"Error processing row {row_num}: {str(e)}")
                 continue
